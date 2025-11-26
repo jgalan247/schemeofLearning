@@ -35,25 +35,92 @@ import {
   getSpecificationKey,
 } from './examBoardSpecs';
 
-// Initial state structure
+// Initial state structure with sample data
 const initialState = {
   // Long-Term Plan (Academic Year)
   longTermPlan: {
-    examBoard: '',
-    keyStage: '',
-    subject: '',
-    year: '',
-    academicYear: '',
-    specification: null,
-    selectedTopics: [],
-    overallAims: '',
-    assessmentStrategy: '',
-    crossCurricularLinks: '',
+    examBoard: 'ocr',
+    keyStage: 'ks4',
+    subject: 'computer-science',
+    year: 'Year 10',
+    academicYear: '2024-2025',
+    specification: specifications['ocr-ks4-computer-science'],
+    selectedTopics: specifications['ocr-ks4-computer-science']?.years['Year 10']?.map((topic, index) => ({
+      ...topic,
+      order: index,
+      isCustom: false,
+      enabled: true,
+    })) || [],
+    overallAims: 'Students will develop a solid foundation in computer science principles, preparing them for the OCR GCSE examination. They will understand how computer systems work, develop computational thinking skills, and gain practical programming experience in Python.',
+    assessmentStrategy: 'Formative assessment through weekly coding challenges and mini-quizzes. Summative assessment at the end of each half-term with past paper questions. Mock examination in Summer 2 to prepare for Year 11.',
+    crossCurricularLinks: 'Mathematics: Binary arithmetic, logic gates, algorithms\nScience: Sensors, environmental monitoring\nBusiness: E-commerce, digital systems in organisations\nArt/Design: UI/UX principles, graphic design for interfaces',
   },
   // Medium-Term Plans (Half-terms/Units)
-  mediumTermPlans: [],
+  mediumTermPlans: [
+    {
+      id: 1,
+      topicId: '1.1',
+      unitTitle: '1.1 Systems Architecture',
+      duration: '6 weeks',
+      termPosition: 'Autumn 1',
+      keyObjectives: 'Understand the purpose and function of the CPU\nExplain the fetch-decode-execute cycle\nDescribe the role of CPU components (ALU, CU, Cache, Registers)\nUnderstand embedded systems and their uses',
+      priorLearning: 'Basic understanding of what a computer is and its main components from KS3 Computing',
+      futureLinks: 'Links to memory and storage (1.2), understanding how programs execute',
+      keyVocabulary: 'CPU, ALU, Control Unit, Cache, Register, RAM, Fetch-Decode-Execute, Clock Speed, Cores, Embedded System',
+      resources: 'CPU simulator software, Raspberry Pi for embedded systems demo, OCR textbook Chapter 1',
+      assessmentFocus: 'End of unit test covering CPU architecture and embedded systems. Practical task: identify embedded systems in everyday devices.',
+    },
+    {
+      id: 2,
+      topicId: '1.2',
+      unitTitle: '1.2 Memory and Storage',
+      duration: '5 weeks',
+      termPosition: 'Autumn 2',
+      keyObjectives: 'Distinguish between RAM and ROM\nUnderstand virtual memory concepts\nCompare storage types: magnetic, optical, solid-state\nCalculate storage requirements for different file types',
+      priorLearning: 'CPU architecture from 1.1, understanding of how data flows in a computer',
+      futureLinks: 'Data representation (1.2 continued), understanding file sizes and compression',
+      keyVocabulary: 'RAM, ROM, Virtual Memory, SSD, HDD, Optical Storage, Cloud Storage, Volatile, Non-volatile',
+      resources: 'Physical examples of storage devices, storage calculator tools, OCR textbook Chapter 2',
+      assessmentFocus: 'Storage calculation exercises, comparison essay on storage technologies',
+    },
+  ],
   // Short-Term Plans (Weekly/Lesson level)
-  shortTermPlans: [],
+  shortTermPlans: [
+    {
+      id: 1,
+      weekNumber: 1,
+      unitId: 1,
+      focusTopic: 'Introduction to CPU and its Purpose',
+      learningObjectives: 'Define what a CPU is and explain its role in a computer system\nIdentify the main components inside a CPU\nUnderstand why the CPU is called the "brain" of the computer',
+      successCriteria: 'I can explain the purpose of a CPU in my own words\nI can name at least 3 components of a CPU\nI can describe what happens when a program runs',
+      keyActivities: 'Starter: Brainstorm - what do you think happens when you click an app?\nMain: Interactive presentation on CPU components with animations\nPractical: Label a CPU diagram and match components to functions\nPlenary: Exit ticket - 3 things learned, 2 questions, 1 interesting fact',
+      differentiation: {
+        stretch: 'Research different CPU manufacturers (Intel vs AMD) and compare specifications. Create a timeline of CPU development.',
+        support: 'Provide pre-labelled diagrams, word bank for key terms, paired work with stronger student',
+        senAdaptations: 'Dyslexia: Use colour-coded notes, provide printed slides in advance\nADHD: Break tasks into 10-minute chunks, allow movement breaks\nVisual: Large font handouts, sit near interactive whiteboard',
+      },
+      resources: 'CPU diagram worksheets, YouTube video "How a CPU Works", physical CPU to pass around (old/broken), mini whiteboards',
+      assessment: 'Diagnostic quiz at start, formative questioning throughout, exit ticket analysis',
+      homework: 'Complete CPU components matching activity on Google Classroom. Watch recommended video and write 3 questions.',
+    },
+    {
+      id: 2,
+      weekNumber: 2,
+      unitId: 1,
+      focusTopic: 'Fetch-Decode-Execute Cycle',
+      learningObjectives: 'Describe the three stages of the FDE cycle\nExplain the role of each CPU component in the cycle\nTrace through a simple program using the FDE cycle',
+      successCriteria: 'I can explain what happens in fetch, decode, and execute stages\nI can identify which component does what in each stage\nI can walk through an example instruction',
+      keyActivities: 'Starter: Recall quiz on CPU components from last week\nMain: FDE cycle animation and step-by-step walkthrough\nPractical: Role-play activity - students act as CPU components\nExtension: Use Little Man Computer simulator\nPlenary: Create a flowchart of the FDE cycle',
+      differentiation: {
+        stretch: 'Use LMC simulator to write and trace simple programs. Research pipelining and superscalar architectures.',
+        support: 'Simplified FDE diagram with colour coding, structured note-taking template',
+        senAdaptations: 'Autism: Provide lesson structure at start, quiet corner available\nDyspraxia: Digital worksheet option instead of handwriting\nAnxiety: Pair work rather than individual presentations',
+      },
+      resources: 'Little Man Computer online simulator, FDE cycle animation, role-play props (component labels), flowchart templates',
+      assessment: 'Peer assessment of flowcharts, verbal explanations during role-play',
+      homework: 'Complete FDE cycle worksheet. Optional: explore LMC simulator and screenshot a working program.',
+    },
+  ],
 };
 
 // Term positions for dropdown
