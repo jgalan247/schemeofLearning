@@ -18,56 +18,41 @@ import {
   Users,
   Clock,
   FileText,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+  Settings,
+  Library,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { generateSchemeSpreadsheet } from './spreadsheetGenerator';
+import {
+  examBoards,
+  keyStages,
+  subjects,
+  specifications,
+  getSpecificationKey,
+} from './examBoardSpecs';
 
 // Initial state structure
 const initialState = {
   // Long-Term Plan (Academic Year)
   longTermPlan: {
+    examBoard: '',
+    keyStage: '',
     subject: '',
-    yearGroup: '',
+    year: '',
     academicYear: '',
-    curriculum: '',
+    specification: null,
+    selectedTopics: [],
     overallAims: '',
-    keyThemes: '',
     assessmentStrategy: '',
     crossCurricularLinks: '',
   },
   // Medium-Term Plans (Half-terms/Units)
-  mediumTermPlans: [
-    {
-      id: 1,
-      unitTitle: '',
-      duration: '6 weeks',
-      termPosition: 'Autumn 1',
-      keyObjectives: '',
-      priorLearning: '',
-      futureLinks: '',
-      keyVocabulary: '',
-      resources: '',
-      assessmentFocus: '',
-    },
-  ],
+  mediumTermPlans: [],
   // Short-Term Plans (Weekly/Lesson level)
-  shortTermPlans: [
-    {
-      id: 1,
-      weekNumber: 1,
-      unitId: 1,
-      focusTopic: '',
-      learningObjectives: '',
-      successCriteria: '',
-      keyActivities: '',
-      differentiation: {
-        stretch: '',
-        support: '',
-        senAdaptations: '',
-      },
-      resources: '',
-      assessment: '',
-      homework: '',
-    },
-  ],
+  shortTermPlans: [],
 };
 
 // Term positions for dropdown
@@ -98,13 +83,74 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedScheme, setGeneratedScheme] = useState(null);
   const [error, setError] = useState(null);
+  const [draggedTopic, setDraggedTopic] = useState(null);
+  const [showAddCustomTopic, setShowAddCustomTopic] = useState(false);
+  const [customTopic, setCustomTopic] = useState({ title: '', subtopics: '', suggestedWeeks: 4 });
 
   const steps = [
-    { id: 1, name: 'Long-Term Plan', icon: Calendar, description: 'Academic year overview' },
+    { id: 1, name: 'Long-Term Plan', icon: Calendar, description: 'Specification & Topics' },
     { id: 2, name: 'Medium-Term Plans', icon: ClipboardList, description: 'Unit planning' },
     { id: 3, name: 'Short-Term Plans', icon: Clock, description: 'Weekly details' },
     { id: 4, name: 'Generate', icon: Sparkles, description: 'AI synthesis' },
   ];
+
+  // Get available years based on key stage
+  const getAvailableYears = () => {
+    const ks = keyStages.find((k) => k.id === formData.longTermPlan.keyStage);
+    return ks ? ks.years : [];
+  };
+
+  // Get specification based on selections
+  const getSpecification = () => {
+    const { examBoard, keyStage, subject } = formData.longTermPlan;
+    if (!examBoard || !keyStage || !subject) return null;
+    const key = getSpecificationKey(examBoard, keyStage, subject);
+    return specifications[key] || null;
+  };
+
+  // Check if a specification exists for current selection
+  const specificationExists = () => {
+    return getSpecification() !== null;
+  };
+
+  // Handle exam board/subject selection changes
+  const handleSelectionChange = (field, value) => {
+    setFormData((prev) => {
+      const newLTP = { ...prev.longTermPlan, [field]: value };
+
+      // Reset dependent fields when parent changes
+      if (field === 'examBoard' || field === 'keyStage' || field === 'subject') {
+        newLTP.year = '';
+        newLTP.selectedTopics = [];
+        newLTP.specification = null;
+      }
+
+      return { ...prev, longTermPlan: newLTP };
+    });
+  };
+
+  // Load topics from specification when year is selected
+  const loadTopicsFromSpecification = (year) => {
+    const spec = getSpecification();
+    if (!spec || !spec.years[year]) return;
+
+    const topics = spec.years[year].map((topic, index) => ({
+      ...topic,
+      order: index,
+      isCustom: false,
+      enabled: true,
+    }));
+
+    setFormData((prev) => ({
+      ...prev,
+      longTermPlan: {
+        ...prev.longTermPlan,
+        year,
+        specification: spec,
+        selectedTopics: topics,
+      },
+    }));
+  };
 
   // Handle Long-Term Plan changes
   const handleLTPChange = useCallback((field, value) => {
@@ -113,6 +159,152 @@ function App() {
       longTermPlan: { ...prev.longTermPlan, [field]: value },
     }));
   }, []);
+
+  // Toggle topic enabled/disabled
+  const toggleTopic = (topicId) => {
+    setFormData((prev) => ({
+      ...prev,
+      longTermPlan: {
+        ...prev.longTermPlan,
+        selectedTopics: prev.longTermPlan.selectedTopics.map((t) =>
+          t.id === topicId ? { ...t, enabled: !t.enabled } : t
+        ),
+      },
+    }));
+  };
+
+  // Remove topic completely
+  const removeTopic = (topicId) => {
+    setFormData((prev) => ({
+      ...prev,
+      longTermPlan: {
+        ...prev.longTermPlan,
+        selectedTopics: prev.longTermPlan.selectedTopics.filter((t) => t.id !== topicId),
+      },
+    }));
+  };
+
+  // Move topic up in order
+  const moveTopicUp = (index) => {
+    if (index === 0) return;
+    setFormData((prev) => {
+      const topics = [...prev.longTermPlan.selectedTopics];
+      [topics[index - 1], topics[index]] = [topics[index], topics[index - 1]];
+      return {
+        ...prev,
+        longTermPlan: { ...prev.longTermPlan, selectedTopics: topics },
+      };
+    });
+  };
+
+  // Move topic down in order
+  const moveTopicDown = (index) => {
+    setFormData((prev) => {
+      const topics = [...prev.longTermPlan.selectedTopics];
+      if (index >= topics.length - 1) return prev;
+      [topics[index], topics[index + 1]] = [topics[index + 1], topics[index]];
+      return {
+        ...prev,
+        longTermPlan: { ...prev.longTermPlan, selectedTopics: topics },
+      };
+    });
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (e, index) => {
+    setDraggedTopic(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    if (draggedTopic === null || draggedTopic === index) return;
+  };
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault();
+    if (draggedTopic === null || draggedTopic === dropIndex) return;
+
+    setFormData((prev) => {
+      const topics = [...prev.longTermPlan.selectedTopics];
+      const [removed] = topics.splice(draggedTopic, 1);
+      topics.splice(dropIndex, 0, removed);
+      return {
+        ...prev,
+        longTermPlan: { ...prev.longTermPlan, selectedTopics: topics },
+      };
+    });
+    setDraggedTopic(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTopic(null);
+  };
+
+  // Add custom topic
+  const addCustomTopic = () => {
+    if (!customTopic.title.trim()) return;
+
+    const newTopic = {
+      id: `custom-${Date.now()}`,
+      title: customTopic.title,
+      subtopics: customTopic.subtopics.split('\n').filter((s) => s.trim()),
+      suggestedWeeks: parseInt(customTopic.suggestedWeeks) || 4,
+      isCustom: true,
+      enabled: true,
+    };
+
+    setFormData((prev) => ({
+      ...prev,
+      longTermPlan: {
+        ...prev.longTermPlan,
+        selectedTopics: [...prev.longTermPlan.selectedTopics, newTopic],
+      },
+    }));
+
+    setCustomTopic({ title: '', subtopics: '', suggestedWeeks: 4 });
+    setShowAddCustomTopic(false);
+  };
+
+  // Update topic weeks
+  const updateTopicWeeks = (topicId, weeks) => {
+    setFormData((prev) => ({
+      ...prev,
+      longTermPlan: {
+        ...prev.longTermPlan,
+        selectedTopics: prev.longTermPlan.selectedTopics.map((t) =>
+          t.id === topicId ? { ...t, suggestedWeeks: parseInt(weeks) || 1 } : t
+        ),
+      },
+    }));
+  };
+
+  // Generate Medium-Term Plans from selected topics
+  const generateMTPsFromTopics = () => {
+    const enabledTopics = formData.longTermPlan.selectedTopics.filter((t) => t.enabled);
+
+    const mtps = enabledTopics.map((topic, index) => ({
+      id: index + 1,
+      topicId: topic.id,
+      unitTitle: topic.title,
+      duration: `${topic.suggestedWeeks} weeks`,
+      termPosition: termPositions[index % 6] || 'Autumn 1',
+      keyObjectives: topic.subtopics ? topic.subtopics.join('\n') : '',
+      priorLearning: '',
+      futureLinks: '',
+      keyVocabulary: '',
+      resources: '',
+      assessmentFocus: '',
+    }));
+
+    setFormData((prev) => ({
+      ...prev,
+      mediumTermPlans: mtps,
+      shortTermPlans: [],
+    }));
+
+    setCurrentStep(2);
+  };
 
   // Handle Medium-Term Plan changes
   const handleMTPChange = useCallback((id, field, value) => {
@@ -240,6 +432,11 @@ Generate a structured JSON response with the following format:
 {
   "schemeTitle": "string - descriptive title",
   "executiveSummary": "string - brief overview of the entire scheme",
+  "specificationInfo": {
+    "examBoard": "string",
+    "qualification": "string",
+    "specCode": "string"
+  },
   "longTermPlan": {
     "rationale": "string - educational rationale for the year's planning",
     "yearOverview": "string - narrative overview of the academic year",
@@ -259,6 +456,7 @@ Generate a structured JSON response with the following format:
       "term": "string",
       "duration": "string",
       "rationale": "string - why this unit at this point",
+      "specificationLinks": ["array of spec references"],
       "bigIdeas": ["array of big ideas/concepts"],
       "knowledgeProgression": "string - how knowledge builds",
       "skillsProgression": "string - how skills develop",
@@ -348,7 +546,7 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `scheme-of-learning-${formData.longTermPlan.subject}-${formData.longTermPlan.yearGroup}.json`;
+    link.download = `scheme-of-learning-${formData.longTermPlan.subject}-${formData.longTermPlan.year}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -356,6 +554,11 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
   // Navigation
   const nextStep = () => setCurrentStep((prev) => Math.min(prev + 1, 4));
   const prevStep = () => setCurrentStep((prev) => Math.max(prev - 1, 1));
+
+  // Calculate total weeks
+  const totalWeeks = formData.longTermPlan.selectedTopics
+    .filter((t) => t.enabled)
+    .reduce((sum, t) => sum + (t.suggestedWeeks || 0), 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -433,118 +636,404 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
         {/* Step 1: Long-Term Plan */}
         {currentStep === 1 && (
-          <div className="card">
-            <div className="flex items-center gap-3 mb-6">
-              <Calendar className="w-6 h-6 text-primary-600" />
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Long-Term Plan</h2>
-                <p className="text-sm text-gray-500">
-                  Define the academic year scope, themes, and overall curriculum goals
-                </p>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Subject
-                </label>
-                <input
-                  type="text"
-                  className="input-field"
-                  placeholder="e.g., Mathematics, English, Science"
-                  value={formData.longTermPlan.subject}
-                  onChange={(e) => handleLTPChange('subject', e.target.value)}
-                />
+          <div className="space-y-6">
+            {/* Specification Selection Card */}
+            <div className="card">
+              <div className="flex items-center gap-3 mb-6">
+                <Settings className="w-6 h-6 text-primary-600" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Select Specification</h2>
+                  <p className="text-sm text-gray-500">
+                    Choose your exam board, key stage, subject, and year to load the official topics
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Year Group
-                </label>
-                <input
-                  type="text"
-                  className="input-field"
-                  placeholder="e.g., Year 7, Year 10, KS3"
-                  value={formData.longTermPlan.yearGroup}
-                  onChange={(e) => handleLTPChange('yearGroup', e.target.value)}
-                />
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Exam Board
+                  </label>
+                  <select
+                    className="input-field"
+                    value={formData.longTermPlan.examBoard}
+                    onChange={(e) => handleSelectionChange('examBoard', e.target.value)}
+                  >
+                    <option value="">Select exam board...</option>
+                    {examBoards.map((board) => (
+                      <option key={board.id} value={board.id}>
+                        {board.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Key Stage
+                  </label>
+                  <select
+                    className="input-field"
+                    value={formData.longTermPlan.keyStage}
+                    onChange={(e) => handleSelectionChange('keyStage', e.target.value)}
+                    disabled={!formData.longTermPlan.examBoard}
+                  >
+                    <option value="">Select key stage...</option>
+                    {keyStages.map((ks) => (
+                      <option key={ks.id} value={ks.id}>
+                        {ks.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Subject
+                  </label>
+                  <select
+                    className="input-field"
+                    value={formData.longTermPlan.subject}
+                    onChange={(e) => handleSelectionChange('subject', e.target.value)}
+                    disabled={!formData.longTermPlan.keyStage}
+                  >
+                    <option value="">Select subject...</option>
+                    {subjects.map((subj) => (
+                      <option key={subj.id} value={subj.id}>
+                        {subj.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Year
+                  </label>
+                  <select
+                    className="input-field"
+                    value={formData.longTermPlan.year}
+                    onChange={(e) => loadTopicsFromSpecification(e.target.value)}
+                    disabled={!formData.longTermPlan.subject || !specificationExists()}
+                  >
+                    <option value="">Select year...</option>
+                    {getAvailableYears().map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              <div>
+              {/* Specification Info */}
+              {formData.longTermPlan.specification && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    <span className="font-medium text-green-800">
+                      {formData.longTermPlan.specification.name}
+                    </span>
+                  </div>
+                  <p className="text-sm text-green-700">
+                    {formData.longTermPlan.specification.assessmentInfo}
+                  </p>
+                </div>
+              )}
+
+              {/* Warning if spec not found */}
+              {formData.longTermPlan.examBoard &&
+                formData.longTermPlan.keyStage &&
+                formData.longTermPlan.subject &&
+                !specificationExists() && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5 text-amber-600" />
+                      <span className="text-amber-800">
+                        This specification is not yet in our database. You can add topics manually below.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+              <div className="mt-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Academic Year
                 </label>
                 <input
                   type="text"
-                  className="input-field"
+                  className="input-field max-w-xs"
                   placeholder="e.g., 2024-2025"
                   value={formData.longTermPlan.academicYear}
                   onChange={(e) => handleLTPChange('academicYear', e.target.value)}
                 />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Curriculum/Specification
-                </label>
-                <input
-                  type="text"
-                  className="input-field"
-                  placeholder="e.g., AQA GCSE, National Curriculum KS3"
-                  value={formData.longTermPlan.curriculum}
-                  onChange={(e) => handleLTPChange('curriculum', e.target.value)}
-                />
+            {/* Topics Management Card */}
+            <div className="card">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <Library className="w-6 h-6 text-primary-600" />
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">Topics & Chapters</h2>
+                    <p className="text-sm text-gray-500">
+                      Reorder, remove, or add topics. Drag to reorder or use arrows.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-gray-600">
+                    Total: <span className="font-semibold">{totalWeeks} weeks</span>
+                  </div>
+                  <button
+                    onClick={() => setShowAddCustomTopic(true)}
+                    className="btn-secondary flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Custom Topic
+                  </button>
+                </div>
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Overall Aims for the Year
-                </label>
-                <textarea
-                  className="textarea-field h-24"
-                  placeholder="What are the overarching goals students should achieve by the end of this academic year?"
-                  value={formData.longTermPlan.overallAims}
-                  onChange={(e) => handleLTPChange('overallAims', e.target.value)}
-                />
+              {/* Topics List */}
+              {formData.longTermPlan.selectedTopics.length > 0 ? (
+                <div className="space-y-2">
+                  {formData.longTermPlan.selectedTopics.map((topic, index) => (
+                    <div
+                      key={topic.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDrop={(e) => handleDrop(e, index)}
+                      onDragEnd={handleDragEnd}
+                      className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${
+                        topic.enabled
+                          ? 'bg-white border-gray-200 hover:border-primary-300'
+                          : 'bg-gray-50 border-gray-100 opacity-60'
+                      } ${draggedTopic === index ? 'opacity-50 border-dashed' : ''}`}
+                    >
+                      {/* Drag Handle */}
+                      <div className="cursor-grab text-gray-400 hover:text-gray-600">
+                        <GripVertical className="w-5 h-5" />
+                      </div>
+
+                      {/* Order Arrows */}
+                      <div className="flex flex-col">
+                        <button
+                          onClick={() => moveTopicUp(index)}
+                          disabled={index === 0}
+                          className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                        >
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => moveTopicDown(index)}
+                          disabled={index === formData.longTermPlan.selectedTopics.length - 1}
+                          className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Topic Number */}
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-semibold text-sm">
+                        {index + 1}
+                      </div>
+
+                      {/* Topic Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className={`font-medium ${topic.enabled ? 'text-gray-900' : 'text-gray-500'}`}>
+                            {topic.title}
+                          </h4>
+                          {topic.isCustom && (
+                            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                              Custom
+                            </span>
+                          )}
+                        </div>
+                        {topic.subtopics && topic.subtopics.length > 0 && (
+                          <p className="text-sm text-gray-500 truncate mt-1">
+                            {topic.subtopics.slice(0, 3).join(' • ')}
+                            {topic.subtopics.length > 3 && ` • +${topic.subtopics.length - 3} more`}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Weeks Input */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-500">Weeks:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="20"
+                          className="w-16 px-2 py-1 border border-gray-300 rounded text-center text-sm"
+                          value={topic.suggestedWeeks}
+                          onChange={(e) => updateTopicWeeks(topic.id, e.target.value)}
+                        />
+                      </div>
+
+                      {/* Toggle Enable/Disable */}
+                      <button
+                        onClick={() => toggleTopic(topic.id)}
+                        className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                          topic.enabled
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                        }`}
+                      >
+                        {topic.enabled ? 'Enabled' : 'Disabled'}
+                      </button>
+
+                      {/* Delete Button */}
+                      <button
+                        onClick={() => removeTopic(topic.id)}
+                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg">
+                  <Library className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p className="text-lg font-medium">No topics loaded</p>
+                  <p className="text-sm mt-1">
+                    Select a specification above to load topics, or add custom topics manually.
+                  </p>
+                </div>
+              )}
+
+              {/* Add Custom Topic Modal */}
+              {showAddCustomTopic && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Custom Topic</h3>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Topic Title
+                        </label>
+                        <input
+                          type="text"
+                          className="input-field"
+                          placeholder="e.g., Introduction to Databases"
+                          value={customTopic.title}
+                          onChange={(e) => setCustomTopic({ ...customTopic, title: e.target.value })}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Subtopics (one per line)
+                        </label>
+                        <textarea
+                          className="textarea-field h-32"
+                          placeholder="Entity relationships&#10;SQL queries&#10;Normalisation"
+                          value={customTopic.subtopics}
+                          onChange={(e) => setCustomTopic({ ...customTopic, subtopics: e.target.value })}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Suggested Weeks
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="20"
+                          className="input-field w-24"
+                          value={customTopic.suggestedWeeks}
+                          onChange={(e) => setCustomTopic({ ...customTopic, suggestedWeeks: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-6">
+                      <button
+                        onClick={() => setShowAddCustomTopic(false)}
+                        className="btn-secondary"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={addCustomTopic}
+                        disabled={!customTopic.title.trim()}
+                        className="btn-primary"
+                      >
+                        Add Topic
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Additional LTP Fields */}
+            <div className="card">
+              <div className="flex items-center gap-3 mb-6">
+                <Calendar className="w-6 h-6 text-primary-600" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Additional Planning Details</h2>
+                  <p className="text-sm text-gray-500">Optional information to enhance your scheme</p>
+                </div>
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Key Themes & Big Ideas
-                </label>
-                <textarea
-                  className="textarea-field h-24"
-                  placeholder="What are the central themes, concepts, or big ideas that will run through the year's learning?"
-                  value={formData.longTermPlan.keyThemes}
-                  onChange={(e) => handleLTPChange('keyThemes', e.target.value)}
-                />
-              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Overall Aims for the Year
+                  </label>
+                  <textarea
+                    className="textarea-field h-24"
+                    placeholder="What are the overarching goals students should achieve by the end of this academic year?"
+                    value={formData.longTermPlan.overallAims}
+                    onChange={(e) => handleLTPChange('overallAims', e.target.value)}
+                  />
+                </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Assessment Strategy
-                </label>
-                <textarea
-                  className="textarea-field h-24"
-                  placeholder="Describe the overall approach to assessment: when will formal assessments occur? What types of assessment will be used?"
-                  value={formData.longTermPlan.assessmentStrategy}
-                  onChange={(e) => handleLTPChange('assessmentStrategy', e.target.value)}
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Assessment Strategy
+                  </label>
+                  <textarea
+                    className="textarea-field h-24"
+                    placeholder="Describe the overall approach to assessment: when will formal assessments occur? What types of assessment will be used?"
+                    value={formData.longTermPlan.assessmentStrategy}
+                    onChange={(e) => handleLTPChange('assessmentStrategy', e.target.value)}
+                  />
+                </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cross-Curricular Links
-                </label>
-                <textarea
-                  className="textarea-field h-20"
-                  placeholder="How does this subject connect with other areas of the curriculum? What opportunities exist for cross-curricular learning?"
-                  value={formData.longTermPlan.crossCurricularLinks}
-                  onChange={(e) => handleLTPChange('crossCurricularLinks', e.target.value)}
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cross-Curricular Links
+                  </label>
+                  <textarea
+                    className="textarea-field h-20"
+                    placeholder="How does this subject connect with other areas of the curriculum?"
+                    value={formData.longTermPlan.crossCurricularLinks}
+                    onChange={(e) => handleLTPChange('crossCurricularLinks', e.target.value)}
+                  />
+                </div>
               </div>
             </div>
+
+            {/* Generate MTPs Button */}
+            {formData.longTermPlan.selectedTopics.filter((t) => t.enabled).length > 0 && (
+              <div className="flex justify-center">
+                <button
+                  onClick={generateMTPsFromTopics}
+                  className="btn-primary flex items-center gap-2 px-8 py-3 text-lg"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                  Generate Medium-Term Plans from Topics
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -558,7 +1047,7 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900">Medium-Term Plans</h2>
                     <p className="text-sm text-gray-500">
-                      Break down the year into half-term units with specific focus areas
+                      Review and enhance the unit plans generated from your topics
                     </p>
                   </div>
                 </div>
@@ -569,146 +1058,156 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
               </div>
             </div>
 
-            {formData.mediumTermPlans.map((mtp, index) => (
-              <div key={mtp.id} className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-800">
-                    Unit {index + 1}: {mtp.unitTitle || 'Untitled'}
-                  </h3>
-                  {formData.mediumTermPlans.length > 1 && (
-                    <button
-                      onClick={() => removeMTP(mtp.id)}
-                      className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Unit Title
-                    </label>
-                    <input
-                      type="text"
-                      className="input-field"
-                      placeholder="e.g., Number Operations"
-                      value={mtp.unitTitle}
-                      onChange={(e) => handleMTPChange(mtp.id, 'unitTitle', e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Term Position
-                    </label>
-                    <select
-                      className="input-field"
-                      value={mtp.termPosition}
-                      onChange={(e) => handleMTPChange(mtp.id, 'termPosition', e.target.value)}
-                    >
-                      {termPositions.map((term) => (
-                        <option key={term} value={term}>
-                          {term}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Duration
-                    </label>
-                    <select
-                      className="input-field"
-                      value={mtp.duration}
-                      onChange={(e) => handleMTPChange(mtp.id, 'duration', e.target.value)}
-                    >
-                      {durationOptions.map((duration) => (
-                        <option key={duration} value={duration}>
-                          {duration}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Key Objectives
-                    </label>
-                    <textarea
-                      className="textarea-field h-24"
-                      placeholder="What will students know/understand/be able to do by the end of this unit?"
-                      value={mtp.keyObjectives}
-                      onChange={(e) => handleMTPChange(mtp.id, 'keyObjectives', e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Prior Learning Required
-                    </label>
-                    <textarea
-                      className="textarea-field h-24"
-                      placeholder="What should students already know before starting this unit?"
-                      value={mtp.priorLearning}
-                      onChange={(e) => handleMTPChange(mtp.id, 'priorLearning', e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Key Vocabulary
-                    </label>
-                    <textarea
-                      className="textarea-field h-20"
-                      placeholder="List key terms and vocabulary for this unit"
-                      value={mtp.keyVocabulary}
-                      onChange={(e) => handleMTPChange(mtp.id, 'keyVocabulary', e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Assessment Focus
-                    </label>
-                    <textarea
-                      className="textarea-field h-20"
-                      placeholder="How will learning be assessed in this unit?"
-                      value={mtp.assessmentFocus}
-                      onChange={(e) => handleMTPChange(mtp.id, 'assessmentFocus', e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Links to Future Learning
-                    </label>
-                    <textarea
-                      className="textarea-field h-20"
-                      placeholder="How does this unit connect to future topics?"
-                      value={mtp.futureLinks}
-                      onChange={(e) => handleMTPChange(mtp.id, 'futureLinks', e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Resources Needed
-                    </label>
-                    <textarea
-                      className="textarea-field h-20"
-                      placeholder="List key resources, textbooks, materials needed"
-                      value={mtp.resources}
-                      onChange={(e) => handleMTPChange(mtp.id, 'resources', e.target.value)}
-                    />
-                  </div>
-                </div>
+            {formData.mediumTermPlans.length === 0 ? (
+              <div className="card text-center py-12">
+                <ClipboardList className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <p className="text-gray-500">No medium-term plans yet.</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Go back to Step 1 and generate MTPs from your topics, or add units manually.
+                </p>
               </div>
-            ))}
+            ) : (
+              formData.mediumTermPlans.map((mtp, index) => (
+                <div key={mtp.id} className="card">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-800">
+                      Unit {index + 1}: {mtp.unitTitle || 'Untitled'}
+                    </h3>
+                    {formData.mediumTermPlans.length > 1 && (
+                      <button
+                        onClick={() => removeMTP(mtp.id)}
+                        className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Unit Title
+                      </label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="e.g., Number Operations"
+                        value={mtp.unitTitle}
+                        onChange={(e) => handleMTPChange(mtp.id, 'unitTitle', e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Term Position
+                      </label>
+                      <select
+                        className="input-field"
+                        value={mtp.termPosition}
+                        onChange={(e) => handleMTPChange(mtp.id, 'termPosition', e.target.value)}
+                      >
+                        {termPositions.map((term) => (
+                          <option key={term} value={term}>
+                            {term}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Duration
+                      </label>
+                      <select
+                        className="input-field"
+                        value={mtp.duration}
+                        onChange={(e) => handleMTPChange(mtp.id, 'duration', e.target.value)}
+                      >
+                        {durationOptions.map((duration) => (
+                          <option key={duration} value={duration}>
+                            {duration}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Key Objectives
+                      </label>
+                      <textarea
+                        className="textarea-field h-24"
+                        placeholder="What will students know/understand/be able to do by the end of this unit?"
+                        value={mtp.keyObjectives}
+                        onChange={(e) => handleMTPChange(mtp.id, 'keyObjectives', e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Prior Learning Required
+                      </label>
+                      <textarea
+                        className="textarea-field h-24"
+                        placeholder="What should students already know before starting this unit?"
+                        value={mtp.priorLearning}
+                        onChange={(e) => handleMTPChange(mtp.id, 'priorLearning', e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Key Vocabulary
+                      </label>
+                      <textarea
+                        className="textarea-field h-20"
+                        placeholder="List key terms and vocabulary for this unit"
+                        value={mtp.keyVocabulary}
+                        onChange={(e) => handleMTPChange(mtp.id, 'keyVocabulary', e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Assessment Focus
+                      </label>
+                      <textarea
+                        className="textarea-field h-20"
+                        placeholder="How will learning be assessed in this unit?"
+                        value={mtp.assessmentFocus}
+                        onChange={(e) => handleMTPChange(mtp.id, 'assessmentFocus', e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Links to Future Learning
+                      </label>
+                      <textarea
+                        className="textarea-field h-20"
+                        placeholder="How does this unit connect to future topics?"
+                        value={mtp.futureLinks}
+                        onChange={(e) => handleMTPChange(mtp.id, 'futureLinks', e.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Resources Needed
+                      </label>
+                      <textarea
+                        className="textarea-field h-20"
+                        placeholder="List key resources, textbooks, materials needed"
+                        value={mtp.resources}
+                        onChange={(e) => handleMTPChange(mtp.id, 'resources', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
 
@@ -727,210 +1226,220 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
               </div>
             </div>
 
-            {formData.mediumTermPlans.map((mtp) => (
-              <div key={mtp.id} className="space-y-4">
-                <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Target className="w-5 h-5 text-primary-600" />
-                      <h3 className="font-semibold text-primary-800">
-                        {mtp.unitTitle || `Unit ${mtp.id}`} - {mtp.termPosition}
-                      </h3>
-                    </div>
-                    <button
-                      onClick={() => addSTP(mtp.id)}
-                      className="btn-primary flex items-center gap-2 text-sm"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add Week
-                    </button>
-                  </div>
-                </div>
-
-                {formData.shortTermPlans
-                  .filter((stp) => stp.unitId === mtp.id)
-                  .sort((a, b) => a.weekNumber - b.weekNumber)
-                  .map((stp) => (
-                    <div key={stp.id} className="card border-l-4 border-l-primary-500">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-semibold text-gray-800 flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-gray-500" />
-                          Week {stp.weekNumber}
-                        </h4>
-                        <button
-                          onClick={() => removeSTP(stp.id)}
-                          className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <div className="grid md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Focus Topic
-                          </label>
-                          <input
-                            type="text"
-                            className="input-field"
-                            placeholder="What is the main focus for this week?"
-                            value={stp.focusTopic}
-                            onChange={(e) => handleSTPChange(stp.id, 'focusTopic', e.target.value)}
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Assessment Method
-                          </label>
-                          <input
-                            type="text"
-                            className="input-field"
-                            placeholder="How will learning be checked?"
-                            value={stp.assessment}
-                            onChange={(e) => handleSTPChange(stp.id, 'assessment', e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Learning Objectives
-                          </label>
-                          <textarea
-                            className="textarea-field h-24"
-                            placeholder="By the end of this week, students will..."
-                            value={stp.learningObjectives}
-                            onChange={(e) =>
-                              handleSTPChange(stp.id, 'learningObjectives', e.target.value)
-                            }
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Success Criteria
-                          </label>
-                          <textarea
-                            className="textarea-field h-24"
-                            placeholder="Students can demonstrate success by..."
-                            value={stp.successCriteria}
-                            onChange={(e) =>
-                              handleSTPChange(stp.id, 'successCriteria', e.target.value)
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Key Activities
-                        </label>
-                        <textarea
-                          className="textarea-field h-24"
-                          placeholder="Describe the main activities and tasks for this week's lessons"
-                          value={stp.keyActivities}
-                          onChange={(e) => handleSTPChange(stp.id, 'keyActivities', e.target.value)}
-                        />
-                      </div>
-
-                      {/* Differentiation Section */}
-                      <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                        <h5 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-                          <Users className="w-4 h-4" />
-                          Differentiation & SEN Support
-                        </h5>
-
-                        <div className="grid md:grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600 mb-2">
-                              Stretch & Challenge
-                            </label>
-                            <textarea
-                              className="textarea-field h-20 text-sm"
-                              placeholder="Extension activities for higher attainers"
-                              value={stp.differentiation.stretch}
-                              onChange={(e) =>
-                                handleDifferentiationChange(stp.id, 'stretch', e.target.value)
-                              }
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600 mb-2">
-                              Support Strategies
-                            </label>
-                            <textarea
-                              className="textarea-field h-20 text-sm"
-                              placeholder="Scaffolds and support for struggling learners"
-                              value={stp.differentiation.support}
-                              onChange={(e) =>
-                                handleDifferentiationChange(stp.id, 'support', e.target.value)
-                              }
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600 mb-2">
-                              SEN Adaptations
-                            </label>
-                            <textarea
-                              className="textarea-field h-20 text-sm"
-                              placeholder="Specific adaptations for SEN students"
-                              value={stp.differentiation.senAdaptations}
-                              onChange={(e) =>
-                                handleDifferentiationChange(stp.id, 'senAdaptations', e.target.value)
-                              }
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Resources
-                          </label>
-                          <input
-                            type="text"
-                            className="input-field"
-                            placeholder="Materials, worksheets, equipment needed"
-                            value={stp.resources}
-                            onChange={(e) => handleSTPChange(stp.id, 'resources', e.target.value)}
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Homework
-                          </label>
-                          <input
-                            type="text"
-                            className="input-field"
-                            placeholder="Homework task for the week"
-                            value={stp.homework}
-                            onChange={(e) => handleSTPChange(stp.id, 'homework', e.target.value)}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                {formData.shortTermPlans.filter((stp) => stp.unitId === mtp.id).length === 0 && (
-                  <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-                    <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>No weekly plans for this unit yet.</p>
-                    <button
-                      onClick={() => addSTP(mtp.id)}
-                      className="text-primary-600 hover:text-primary-700 font-medium mt-2"
-                    >
-                      Add the first week
-                    </button>
-                  </div>
-                )}
+            {formData.mediumTermPlans.length === 0 ? (
+              <div className="card text-center py-12">
+                <Clock className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                <p className="text-gray-500">No medium-term plans to create weekly plans for.</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Go back to Step 2 and add some units first.
+                </p>
               </div>
-            ))}
+            ) : (
+              formData.mediumTermPlans.map((mtp) => (
+                <div key={mtp.id} className="space-y-4">
+                  <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Target className="w-5 h-5 text-primary-600" />
+                        <h3 className="font-semibold text-primary-800">
+                          {mtp.unitTitle || `Unit ${mtp.id}`} - {mtp.termPosition}
+                        </h3>
+                      </div>
+                      <button
+                        onClick={() => addSTP(mtp.id)}
+                        className="btn-primary flex items-center gap-2 text-sm"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Week
+                      </button>
+                    </div>
+                  </div>
+
+                  {formData.shortTermPlans
+                    .filter((stp) => stp.unitId === mtp.id)
+                    .sort((a, b) => a.weekNumber - b.weekNumber)
+                    .map((stp) => (
+                      <div key={stp.id} className="card border-l-4 border-l-primary-500">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-semibold text-gray-800 flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-gray-500" />
+                            Week {stp.weekNumber}
+                          </h4>
+                          <button
+                            onClick={() => removeSTP(stp.id)}
+                            className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Focus Topic
+                            </label>
+                            <input
+                              type="text"
+                              className="input-field"
+                              placeholder="What is the main focus for this week?"
+                              value={stp.focusTopic}
+                              onChange={(e) => handleSTPChange(stp.id, 'focusTopic', e.target.value)}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Assessment Method
+                            </label>
+                            <input
+                              type="text"
+                              className="input-field"
+                              placeholder="How will learning be checked?"
+                              value={stp.assessment}
+                              onChange={(e) => handleSTPChange(stp.id, 'assessment', e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Learning Objectives
+                            </label>
+                            <textarea
+                              className="textarea-field h-24"
+                              placeholder="By the end of this week, students will..."
+                              value={stp.learningObjectives}
+                              onChange={(e) =>
+                                handleSTPChange(stp.id, 'learningObjectives', e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Success Criteria
+                            </label>
+                            <textarea
+                              className="textarea-field h-24"
+                              placeholder="Students can demonstrate success by..."
+                              value={stp.successCriteria}
+                              onChange={(e) =>
+                                handleSTPChange(stp.id, 'successCriteria', e.target.value)
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mb-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Key Activities
+                          </label>
+                          <textarea
+                            className="textarea-field h-24"
+                            placeholder="Describe the main activities and tasks for this week's lessons"
+                            value={stp.keyActivities}
+                            onChange={(e) => handleSTPChange(stp.id, 'keyActivities', e.target.value)}
+                          />
+                        </div>
+
+                        {/* Differentiation Section */}
+                        <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                          <h5 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                            <Users className="w-4 h-4" />
+                            Differentiation & SEN Support
+                          </h5>
+
+                          <div className="grid md:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-600 mb-2">
+                                Stretch & Challenge
+                              </label>
+                              <textarea
+                                className="textarea-field h-20 text-sm"
+                                placeholder="Extension activities for higher attainers"
+                                value={stp.differentiation.stretch}
+                                onChange={(e) =>
+                                  handleDifferentiationChange(stp.id, 'stretch', e.target.value)
+                                }
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-600 mb-2">
+                                Support Strategies
+                              </label>
+                              <textarea
+                                className="textarea-field h-20 text-sm"
+                                placeholder="Scaffolds and support for struggling learners"
+                                value={stp.differentiation.support}
+                                onChange={(e) =>
+                                  handleDifferentiationChange(stp.id, 'support', e.target.value)
+                                }
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-600 mb-2">
+                                SEN Adaptations
+                              </label>
+                              <textarea
+                                className="textarea-field h-20 text-sm"
+                                placeholder="Specific adaptations for SEN students"
+                                value={stp.differentiation.senAdaptations}
+                                onChange={(e) =>
+                                  handleDifferentiationChange(stp.id, 'senAdaptations', e.target.value)
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Resources
+                            </label>
+                            <input
+                              type="text"
+                              className="input-field"
+                              placeholder="Materials, worksheets, equipment needed"
+                              value={stp.resources}
+                              onChange={(e) => handleSTPChange(stp.id, 'resources', e.target.value)}
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Homework
+                            </label>
+                            <input
+                              type="text"
+                              className="input-field"
+                              placeholder="Homework task for the week"
+                              value={stp.homework}
+                              onChange={(e) => handleSTPChange(stp.id, 'homework', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                  {formData.shortTermPlans.filter((stp) => stp.unitId === mtp.id).length === 0 && (
+                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                      <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p>No weekly plans for this unit yet.</p>
+                      <button
+                        onClick={() => addSTP(mtp.id)}
+                        className="text-primary-600 hover:text-primary-700 font-medium mt-2"
+                      >
+                        Add the first week
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         )}
 
@@ -977,16 +1486,24 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
                 <h3 className="font-medium text-gray-700 mb-3">Planning Summary</h3>
                 <div className="grid md:grid-cols-3 gap-4 text-sm">
                   <div>
-                    <p className="text-gray-500">Subject</p>
-                    <p className="font-medium">{formData.longTermPlan.subject || 'Not specified'}</p>
+                    <p className="text-gray-500">Specification</p>
+                    <p className="font-medium">
+                      {formData.longTermPlan.specification?.name || 'Custom'}
+                    </p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Year Group</p>
-                    <p className="font-medium">{formData.longTermPlan.yearGroup || 'Not specified'}</p>
+                    <p className="text-gray-500">Year</p>
+                    <p className="font-medium">{formData.longTermPlan.year || 'Not specified'}</p>
                   </div>
                   <div>
                     <p className="text-gray-500">Academic Year</p>
                     <p className="font-medium">{formData.longTermPlan.academicYear || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Topics</p>
+                    <p className="font-medium">
+                      {formData.longTermPlan.selectedTopics.filter((t) => t.enabled).length} enabled
+                    </p>
                   </div>
                   <div>
                     <p className="text-gray-500">Units Planned</p>
@@ -995,10 +1512,6 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
                   <div>
                     <p className="text-gray-500">Weekly Plans</p>
                     <p className="font-medium">{formData.shortTermPlans.length}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500">Curriculum</p>
-                    <p className="font-medium">{formData.longTermPlan.curriculum || 'Not specified'}</p>
                   </div>
                 </div>
               </div>
@@ -1026,6 +1539,37 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
                     Generate Scheme of Learning
                   </>
                 )}
+              </button>
+            </div>
+
+            {/* Export to Spreadsheet */}
+            <div className="card">
+              <div className="flex items-center gap-3 mb-4">
+                <FileSpreadsheet className="w-6 h-6 text-green-600" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Export to Spreadsheet</h2>
+                  <p className="text-sm text-gray-500">
+                    Download your scheme as an Excel file with LTP, MTP, and STP worksheets
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <h4 className="font-medium text-gray-700 mb-2">Worksheets included:</h4>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li><strong>1. LTP - Half-Term Overview:</strong> Topics distributed across the year by half-term</li>
+                  <li><strong>2. MTP - Weekly Overview:</strong> Week-by-week breakdown for each unit</li>
+                  <li><strong>3. STP - Lesson Plans:</strong> 5-lesson structure for each week</li>
+                </ul>
+              </div>
+
+              <button
+                onClick={() => generateSchemeSpreadsheet(formData, generatedScheme)}
+                disabled={formData.longTermPlan.selectedTopics.filter(t => t.enabled).length === 0}
+                className="btn-primary w-full flex items-center justify-center gap-2 py-3 bg-green-600 hover:bg-green-700"
+              >
+                <FileSpreadsheet className="w-5 h-5" />
+                Export to Excel Spreadsheet
               </button>
             </div>
 
