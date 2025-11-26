@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { CONDITIONS } from './adaptedIntegration';
 
 /**
  * Generate a Scheme of Learning spreadsheet with 3 worksheets:
@@ -6,7 +7,7 @@ import * as XLSX from 'xlsx';
  * 2. MTP - Medium-Term Plan (weekly overview)
  * 3. STP - Short-Term Plan (lesson-by-lesson)
  */
-export const generateSchemeSpreadsheet = (formData, generatedScheme = null) => {
+export const generateSchemeSpreadsheet = (formData, generatedScheme = null, selectedConditions = []) => {
   const workbook = XLSX.utils.book_new();
 
   // Get specification info
@@ -24,8 +25,14 @@ export const generateSchemeSpreadsheet = (formData, generatedScheme = null) => {
   XLSX.utils.book_append_sheet(workbook, mtpSheet, 'MTP - Weekly Overview');
 
   // 3. Create STP Worksheet (Lesson-by-lesson)
-  const stpSheet = createSTPSheet(formData, specName, year);
+  const stpSheet = createSTPSheet(formData, specName, year, selectedConditions);
   XLSX.utils.book_append_sheet(workbook, stpSheet, 'STP - Lesson Plans');
+
+  // 4. Create Adaptations Guide Worksheet (if conditions selected)
+  if (selectedConditions.length > 0) {
+    const adaptSheet = createAdaptationsSheet(selectedConditions);
+    XLSX.utils.book_append_sheet(workbook, adaptSheet, 'Adaptations Guide');
+  }
 
   // Generate filename
   const filename = `Scheme_of_Learning_${year.replace(' ', '_')}_${academicYear}.xlsx`;
@@ -201,35 +208,49 @@ const createMTPSheet = (formData, specName, year) => {
 /**
  * STP Worksheet - Short-Term Plan showing lesson-by-lesson breakdown
  */
-const createSTPSheet = (formData, specName, year) => {
+const createSTPSheet = (formData, specName, year, selectedConditions = []) => {
   const mtps = formData.mediumTermPlans;
   const stps = formData.shortTermPlans;
+
+  // Build column headers dynamically based on selected conditions
+  const baseHeaders = [
+    'Unit',
+    'Week',
+    'Lesson 1 - Focus',
+    'Lesson 1 - Activities',
+    'Lesson 2 - Focus',
+    'Lesson 2 - Activities',
+    'Lesson 3 - Focus',
+    'Lesson 3 - Activities',
+    'Lesson 4 - Focus',
+    'Lesson 4 - Activities',
+    'Lesson 5 - Focus',
+    'Lesson 5 - Activities',
+    'Weekly Assessment',
+    'SEN Adaptations',
+    'Resources',
+  ];
+
+  // Add adaptation columns for each selected condition
+  const conditionHeaders = selectedConditions.map(condId => {
+    const condition = CONDITIONS[condId];
+    return condition ? `${condition.name} Adaptations` : condId;
+  });
+
+  const allHeaders = [...baseHeaders, ...conditionHeaders];
 
   const data = [
     ['SHORT-TERM PLAN (STP) - LESSON-BY-LESSON'],
     [],
     ['Specification:', specName],
     ['Year Group:', year],
+    selectedConditions.length > 0
+      ? ['Neurodivergent Support:', selectedConditions.map(c => CONDITIONS[c]?.name).join(', ')]
+      : [],
     [],
-    // Column headers for 5-lesson week
-    [
-      'Unit',
-      'Week',
-      'Lesson 1 - Focus',
-      'Lesson 1 - Activities',
-      'Lesson 2 - Focus',
-      'Lesson 2 - Activities',
-      'Lesson 3 - Focus',
-      'Lesson 3 - Activities',
-      'Lesson 4 - Focus',
-      'Lesson 4 - Activities',
-      'Lesson 5 - Focus',
-      'Lesson 5 - Activities',
-      'Weekly Assessment',
-      'SEN Adaptations',
-      'Resources',
-    ],
-  ];
+    // Column headers
+    allHeaders,
+  ].filter(row => row.length > 0);
 
   mtps.forEach(mtp => {
     const unitStps = stps.filter(s => s.unitId === mtp.id).sort((a, b) => a.weekNumber - b.weekNumber);
@@ -247,7 +268,7 @@ const createSTPSheet = (formData, specName, year) => {
         const activities = (stp.keyActivities || '').split('\n').filter(a => a.trim());
         const objectives = (stp.learningObjectives || '').split('\n').filter(o => o.trim());
 
-        data.push([
+        const baseRow = [
           mtp.unitTitle,
           `Week ${stp.weekNumber}: ${stp.focusTopic || ''}`,
           // Lesson 1
@@ -271,12 +292,26 @@ const createSTPSheet = (formData, specName, year) => {
           stp.differentiation?.senAdaptations || '',
           // Resources
           stp.resources || '',
-        ]);
+        ];
+
+        // Add adaptation columns for each selected condition
+        selectedConditions.forEach(condId => {
+          const condition = CONDITIONS[condId];
+          if (condition) {
+            // Pick 2-3 relevant adaptations for this lesson
+            const relevantAdaptations = condition.adaptations.slice(0, 3).join('; ');
+            baseRow.push(relevantAdaptations);
+          } else {
+            baseRow.push('');
+          }
+        });
+
+        data.push(baseRow);
       });
     } else {
       // Generate placeholder weeks with lesson structure
       for (let week = 1; week <= durationWeeks; week++) {
-        data.push([
+        const baseRow = [
           mtp.unitTitle,
           `Week ${week}`,
           '', '', // L1
@@ -287,7 +322,14 @@ const createSTPSheet = (formData, specName, year) => {
           '', // Assessment
           '', // SEN
           '', // Resources
-        ]);
+        ];
+
+        // Add empty adaptation columns for each selected condition
+        selectedConditions.forEach(() => {
+          baseRow.push('');
+        });
+
+        data.push(baseRow);
       }
     }
   });
@@ -311,8 +353,8 @@ const createSTPSheet = (formData, specName, year) => {
 
   const ws = XLSX.utils.aoa_to_sheet(data);
 
-  // Set column widths
-  ws['!cols'] = [
+  // Set column widths - base columns plus dynamic adaptation columns
+  const baseColWidths = [
     { wch: 25 },  // Unit
     { wch: 20 },  // Week
     { wch: 20 },  // L1 Focus
@@ -328,6 +370,68 @@ const createSTPSheet = (formData, specName, year) => {
     { wch: 20 },  // Assessment
     { wch: 25 },  // SEN
     { wch: 20 },  // Resources
+  ];
+
+  // Add column widths for each adaptation column
+  const adaptationColWidths = selectedConditions.map(() => ({ wch: 40 }));
+
+  ws['!cols'] = [...baseColWidths, ...adaptationColWidths];
+
+  return ws;
+};
+
+/**
+ * Adaptations Guide Worksheet - Reference sheet for neurodivergent support strategies
+ */
+const createAdaptationsSheet = (selectedConditions) => {
+  const data = [
+    ['ADAPTATIONS GUIDE - NEURODIVERGENT SUPPORT STRATEGIES'],
+    [],
+    ['This guide provides evidence-based strategies for supporting students with diverse learning needs.'],
+    ['Select relevant adaptations based on individual student needs and apply across lesson planning.'],
+    [],
+  ];
+
+  selectedConditions.forEach(conditionId => {
+    const condition = CONDITIONS[conditionId];
+    if (!condition) return;
+
+    data.push([]);
+    data.push([`${condition.name.toUpperCase()}`]);
+    data.push(['Strategy', 'Implementation Notes']);
+
+    condition.adaptations.forEach((adaptation, index) => {
+      data.push([
+        adaptation,
+        '', // Space for teacher to add implementation notes
+      ]);
+    });
+  });
+
+  // Add general implementation guidance
+  data.push([]);
+  data.push([]);
+  data.push(['IMPLEMENTATION CHECKLIST']);
+  data.push([]);
+  data.push(['✓ Review student EHCP/IEP documentation']);
+  data.push(['✓ Consult with SENCO for specific recommendations']);
+  data.push(['✓ Communicate adaptations with teaching assistants']);
+  data.push(['✓ Prepare differentiated resources in advance']);
+  data.push(['✓ Plan for flexible groupings']);
+  data.push(['✓ Build in regular check-ins with supported students']);
+  data.push(['✓ Review and adjust adaptations based on student feedback']);
+  data.push([]);
+  data.push(['RESOURCES']);
+  data.push(['- British Dyslexia Association: www.bdadyslexia.org.uk']);
+  data.push(['- National Autistic Society: www.autism.org.uk']);
+  data.push(['- ADHD Foundation: www.adhdfoundation.org.uk']);
+  data.push(['- Anxiety UK: www.anxietyuk.org.uk']);
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  ws['!cols'] = [
+    { wch: 60 },  // Strategy
+    { wch: 40 },  // Implementation Notes
   ];
 
   return ws;

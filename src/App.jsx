@@ -26,6 +26,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { generateSchemeSpreadsheet } from './spreadsheetGenerator';
+import { CONDITIONS, exportForAdaptEd } from './adaptedIntegration';
 import {
   examBoards,
   keyStages,
@@ -86,6 +87,7 @@ function App() {
   const [draggedTopic, setDraggedTopic] = useState(null);
   const [showAddCustomTopic, setShowAddCustomTopic] = useState(false);
   const [customTopic, setCustomTopic] = useState({ title: '', subtopics: '', suggestedWeeks: 4 });
+  const [selectedConditions, setSelectedConditions] = useState([]);
 
   const steps = [
     { id: 1, name: 'Long-Term Plan', icon: Calendar, description: 'Specification & Topics' },
@@ -408,6 +410,15 @@ function App() {
       shortTermPlans: prev.shortTermPlans.filter((stp) => stp.id !== id),
     }));
   }, []);
+
+  // Toggle neurodivergent condition selection
+  const toggleCondition = (conditionId) => {
+    setSelectedConditions(prev =>
+      prev.includes(conditionId)
+        ? prev.filter(c => c !== conditionId)
+        : [...prev, conditionId]
+    );
+  };
 
   // Generate Scheme of Learning using Gemini API
   const generateScheme = async () => {
@@ -1542,6 +1553,68 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
               </button>
             </div>
 
+            {/* Neurodivergent Support Selection */}
+            <div className="card">
+              <div className="flex items-center gap-3 mb-4">
+                <Users className="w-6 h-6 text-purple-600" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Neurodivergent Support (AdaptEd)</h2>
+                  <p className="text-sm text-gray-500">
+                    Select conditions to include specific adaptations in your scheme
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+                {Object.values(CONDITIONS).map((condition) => (
+                  <button
+                    key={condition.id}
+                    onClick={() => toggleCondition(condition.id)}
+                    className={`p-3 rounded-lg border-2 transition-all text-left ${
+                      selectedConditions.includes(condition.id)
+                        ? 'border-purple-500 bg-purple-50'
+                        : 'border-gray-200 hover:border-purple-300 bg-white'
+                    }`}
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full mb-2"
+                      style={{ backgroundColor: condition.color }}
+                    />
+                    <p className={`text-sm font-medium ${
+                      selectedConditions.includes(condition.id)
+                        ? 'text-purple-700'
+                        : 'text-gray-700'
+                    }`}>
+                      {condition.name}
+                    </p>
+                  </button>
+                ))}
+              </div>
+
+              {selectedConditions.length > 0 && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <p className="text-sm text-purple-800 font-medium mb-2">
+                    Selected: {selectedConditions.map(c => CONDITIONS[c]?.name).join(', ')}
+                  </p>
+                  <p className="text-xs text-purple-700">
+                    Adaptation strategies will be included in your spreadsheet export and an Adaptations Guide worksheet will be added.
+                  </p>
+                </div>
+              )}
+
+              {selectedConditions.length > 0 && (
+                <div className="mt-4">
+                  <button
+                    onClick={() => exportForAdaptEd(formData)}
+                    className="btn-secondary w-full flex items-center justify-center gap-2 py-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export for AdaptEd (JSON)
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Export to Spreadsheet */}
             <div className="card">
               <div className="flex items-center gap-3 mb-4">
@@ -1560,16 +1633,20 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
                   <li><strong>1. LTP - Half-Term Overview:</strong> Topics distributed across the year by half-term</li>
                   <li><strong>2. MTP - Weekly Overview:</strong> Week-by-week breakdown for each unit</li>
                   <li><strong>3. STP - Lesson Plans:</strong> 5-lesson structure for each week</li>
+                  {selectedConditions.length > 0 && (
+                    <li><strong>4. Adaptations Guide:</strong> Neurodivergent support strategies for selected conditions</li>
+                  )}
                 </ul>
               </div>
 
               <button
-                onClick={() => generateSchemeSpreadsheet(formData, generatedScheme)}
+                onClick={() => generateSchemeSpreadsheet(formData, generatedScheme, selectedConditions)}
                 disabled={formData.longTermPlan.selectedTopics.filter(t => t.enabled).length === 0}
                 className="btn-primary w-full flex items-center justify-center gap-2 py-3 bg-green-600 hover:bg-green-700"
               >
                 <FileSpreadsheet className="w-5 h-5" />
                 Export to Excel Spreadsheet
+                {selectedConditions.length > 0 && ` (with ${selectedConditions.length} adaptations)`}
               </button>
             </div>
 
