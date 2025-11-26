@@ -23,7 +23,9 @@ import {
   ChevronDown,
   Settings,
   Library,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { generateSchemeSpreadsheet } from './spreadsheetGenerator';
 import {
   examBoards,
   keyStages,
@@ -1537,6 +1539,37 @@ Be thorough, educational, and ensure progression is clear throughout. Fill in an
                     Generate Scheme of Learning
                   </>
                 )}
+              </button>
+            </div>
+
+            {/* Export to Spreadsheet */}
+            <div className="card">
+              <div className="flex items-center gap-3 mb-4">
+                <FileSpreadsheet className="w-6 h-6 text-green-600" />
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Export to Spreadsheet</h2>
+                  <p className="text-sm text-gray-500">
+                    Download your scheme as an Excel file with LTP, MTP, and STP worksheets
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <h4 className="font-medium text-gray-700 mb-2">Worksheets included:</h4>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li><strong>1. LTP - Half-Term Overview:</strong> Topics distributed across the year by half-term</li>
+                  <li><strong>2. MTP - Weekly Overview:</strong> Week-by-week breakdown for each unit</li>
+                  <li><strong>3. STP - Lesson Plans:</strong> 5-lesson structure for each week</li>
+                </ul>
+              </div>
+
+              <button
+                onClick={() => generateSchemeSpreadsheet(formData, generatedScheme)}
+                disabled={formData.longTermPlan.selectedTopics.filter(t => t.enabled).length === 0}
+                className="btn-primary w-full flex items-center justify-center gap-2 py-3 bg-green-600 hover:bg-green-700"
+              >
+                <FileSpreadsheet className="w-5 h-5" />
+                Export to Excel Spreadsheet
               </button>
             </div>
 
